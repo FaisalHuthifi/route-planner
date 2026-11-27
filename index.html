@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مخطط الزيارات</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#eef1f4;--card:#fff;--tx:#14202b;--mu:#566472;--bd:#d5dce3;--ac:#0a5c8a;--acx:#fff;--line:#0a5c8a;--wn:#8a4b00;--wb:#fff1d6;--ok:#e3f3ea}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0f161c;--card:#18222b;--tx:#e6edf3;--mu:#92a1af;--bd:#2b3945;--ac:#5cb8ea;--acx:#06202f;--line:#5cb8ea;--wn:#f5c06b;--wb:#3a2c10;--ok:#12302a}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0f161c;--card:#18222b;--tx:#e6edf3;--mu:#92a1af;--bd:#2b3945;--ac:#5cb8ea;--acx:#06202f;--line:#5cb8ea;--wn:#f5c06b;--wb:#3a2c10;--ok:#12302a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Segoe UI",Tahoma,system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:18px 14px 40px}
+h1{font-size:24px;margin:4px 0 2px}
+.sub{color:var(--mu);margin:0 0 14px}
+textarea{width:100%;min-height:150px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);padding:12px;font:inherit;resize:vertical}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}
+select,button,.btn{font:inherit;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:9px 14px;cursor:pointer;text-decoration:none;display:inline-block}
+.pri{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+label{display:flex;gap:6px;align-items:center;color:var(--mu)}
+.sum{font-weight:600;margin:16px 0 8px}
+.routes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+ol{list-style:none;margin:0;padding:0;position:relative}
+li{position:relative;padding:0 46px 12px 0}
+li::before{content:"";position:absolute;right:15px;top:30px;bottom:-2px;width:2px;background:var(--line);opacity:.35}
+li:last-child::before{display:none}
+.n{position:absolute;right:0;top:4px;width:32px;height:32px;border-radius:50%;background:var(--ac);color:var(--acx);display:grid;place-items:center;font-weight:700}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 14px}
+li.done .c{background:var(--ok);opacity:.7}
+li.done .t{text-decoration:line-through}
+.t{font-weight:700}
+.m{color:var(--mu);font-size:15px}
+.tag{display:inline-block;background:var(--wb);color:var(--wn);border-radius:6px;padding:0 8px;font-size:13px;margin:4px 0 0 6px}
+.act{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.act .btn{padding:5px 12px;font-size:15px}
+.msg{color:var(--mu);padding:18px;border:1px dashed var(--bd);border-radius:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>مخطط الزيارات</h1>
+<p class="sub">الصق القائمة وخذ المسار مرتبًا مع الأرقام والأحياء.</p>
+<textarea id="ta" placeholder="الصق هنا: الاسم، الجوال، الحي، ثم خط العرض وخط الطول (كل واحد في سطر)"></textarea>
+<div class="row">
+<select id="mode" aria-label="ترتيب المسار">
+<option value="sh">أقصر مسار</option>
+<option value="ns">من الشمال للجنوب</option>
+<option value="sn">من الجنوب للشمال</option>
+</select>
+<label><input type="checkbox" id="skip"> تخطي اللي عليه ملاحظة (مغلق / سبق الزيارة)</label>
+<button id="clr">مسح</button>
+</div>
+<div id="out"></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const ta=$('#ta'),out=$('#out');
+const NUM=/^-?\d{1,3}\.\d{3,}$/;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const digits=s=>s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+let done={};try{done=JSON.parse(LS.get('done')||'{}')}catch(e){}
+
+function normPhone(raw){
+  let d=String(raw).replace(/\D/g,'');
+  if(d.startsWith('00966'))d=d.slice(5);
+  else if(d.startsWith('966'))d=d.slice(3);
+  if(d.startsWith('0'))d=d.slice(1);
+  return /^5\d{8}$/.test(d)?'0'+d:'';
+}
+function matchPhones(line){
+  const re=/(^|[^\d])((?:(?:\+|00)?966[\s-]?|0)?5(?:[\s-]?\d){8})(?!\d)/g,out=[];
+  let m;
+  while((m=re.exec(line))){
+    const n=normPhone(m[2]);
+    if(n)out.push({n,start:m.index+m[1].length,end:m.index+m[0].length});
+    if(m.index===re.lastIndex)re.lastIndex++;
+  }
+  return out;
+}
+function isNote(line){
+  return /مغلق|إغلاق|اغلاق|طلعت|لم\s*يتم|ملاحظ(?!ات)|وقوف|الاتصال(?!ات)|اتصل(?!ات)|جنبه/.test(line)||/^تم(?:\s|$)/.test(line);
+}
+function phoneOnly(line){
+  const ph=matchPhones(line);
+  if(!ph.length)return false;
+  let rest=line;
+  for(let i=ph.length-1;i>=0;i--)rest=rest.slice(0,ph[i].start)+rest.slice(ph[i].end);
+  return !/[\u0600-\u06FFa-zA-Z]/.test(rest)&&!/\d/.test(rest);
+}
+function stripPhones(line){
+  const ph=matchPhones(line);
+  if(!ph.length)return line.trim();
+  let s=line;
+  for(let i=ph.length-1;i>=0;i--)s=s.slice(0,ph[i].start)+' '+s.slice(ph[i].end);
+  return s.replace(/\s+/g,' ').replace(/^[\s\-–—/|,،.+]+|[\s\-–—/|,،.+]+$/g,'').trim();
+}
+function notePrefix(lines,coordsFollow){
+  let i=0,seen=false;
+  while(i<lines.length){
+    if(isNote(lines[i])){seen=true;i++;continue}
+    if(seen&&phoneOnly(lines[i])){
+      const rest=lines.slice(i+1);
+      const laterNamed=rest.some(l=>matchPhones(l).length&&!phoneOnly(l)&&!isNote(l));
+      const moreNotes=rest.some(l=>isNote(l));
+      if(laterNamed||moreNotes||!coordsFollow){i++;continue}
+    }
+    break;
+  }
+  return i;
+}
+function mk(lines,lat,lng){
+  const notes=[],body=[];
+  for(const l of lines)(isNote(l)?notes:body).push(l);
+  const src=body.length?body:lines,noteList=body.length?notes:[];
+  const found=src.map(matchPhones);
+  const pi=found.findIndex(p=>p.length);
+  let title='',person='',hood='',phones=[];
+  if(pi<0){
+    title=src[0]||'';
+    hood=src.slice(1).map(s=>s.trim()).filter(Boolean).join(' ');
+  }else{
+    phones=[...new Set(found.flatMap(p=>p.map(x=>x.n)))];
+    title=src.slice(0,pi).map(stripPhones).filter(Boolean).join(' ');
+    const names=[stripPhones(src[pi])],hoods=[];
+    for(let i=pi+1;i<src.length;i++)(found[i].length?names:hoods).push(stripPhones(src[i]));
+    person=names.filter(Boolean).join(' / ');
+    hood=hoods.filter(Boolean).join(' ');
+  }
+  return{title:title||person||phones[0]||'',person:title?person:'',phone:phones[0]||'',phones,hood,lat,lng,notes:noteList};
+}
+function parse(txt){
+  const L=digits(txt).split(/\r?\n/).map(s=>s.trim()).filter(Boolean),res=[];let pend=[];
+  const flushNotes=coordsFollow=>{
+    if(!res.length||!pend.length)return;
+    const k=notePrefix(pend,coordsFollow);
+    if(k)res[res.length-1].notes.push(...pend.splice(0,k));
+  };
+  for(let i=0;i<L.length;i++){
+    if(NUM.test(L[i])&&L[i+1]&&NUM.test(L[i+1])){
+      flushNotes(true);
+      let a=+L[i],b=+L[i+1];if(a>b)[a,b]=[b,a];
+      res.push(mk(pend,a,b));pend=[];i++;
+    }else pend.push(L[i]);
+  }
+  flushNotes(false);
+  return res;
+}
+const hv=(a,b)=>{const r=Math.PI/180,x=Math.sin((b.lat-a.lat)*r/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin((b.lng-a.lng)*r/2)**2;return 12742*Math.asin(Math.sqrt(x))};
+const len=p=>{let s=0;for(let i=1;i<p.length;i++)s+=hv(p[i-1],p[i]);return s};
+function shortest(pts){
+  let best=[],bl=1e9;
+  for(let s=0;s<pts.length;s++){
+    const rest=pts.filter((_,i)=>i!==s);let path=[pts[s]];
+    while(rest.length){const l=path[path.length-1];let k=0;for(let i=1;i<rest.length;i++)if(hv(l,rest[i])<hv(l,rest[k]))k=i;path.push(rest.splice(k,1)[0])}
+    for(let imp=true;imp;){imp=false;for(let i=1;i<path.length-1;i++)for(let j=i+1;j<path.length;j++){
+      const np=path.slice(0,i).concat(path.slice(i,j+1).reverse(),path.slice(j+1));
+      if(len(np)<len(path)-1e-9){path=np;imp=true}}}
+    const l=len(path);if(l<bl){bl=l;best=path}
+  }
+  return best;
+}
+const cc=p=>p.lat.toFixed(6)+','+p.lng.toFixed(6);
+function link(ch,prev){
+  const w=ch.slice(0,-1).map(cc).join('%7C');
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=driving'+(prev?'&origin='+cc(prev):'')+(w?'&waypoints='+w:'')+'&destination='+cc(ch[ch.length-1]);
+}
+let cur=[];
+function render(){
+  LS.set('txt',ta.value);
+  let pts=parse(ta.value);
+  if($('#skip').checked)pts=pts.filter(p=>!p.notes.length);
+  if(!pts.length){out.innerHTML='<div class="msg">ما لقيت معاملات بعد. تأكد أن كل معاملة فيها خط العرض وخط الطول في سطرين متتاليين.</div>';cur=[];return}
+  const m=$('#mode').value;
+  cur=m==='ns'?[...pts].sort((a,b)=>b.lat-a.lat):m==='sn'?[...pts].sort((a,b)=>a.lat-b.lat):shortest(pts);
+  let h='<div class="sum">'+cur.length+' معاملة، حوالي '+Math.round(len(cur))+' كم بين النقاط</div><div class="routes">';
+  for(let i=0;i<cur.length;i+=10){
+    const ch=cur.slice(i,i+10);
+    h+='<a class="btn pri" target="_blank" rel="noopener" href="'+link(ch,i?cur[i-1]:null)+'">افتح المسار '+(i+1)+' إلى '+(i+ch.length)+'</a>';
+  }
+  h+='<button id="cp">نسخ القائمة</button></div><ol>';
+  cur.forEach((p,i)=>{
+    const phones=p.phones&&p.phones.length?p.phones:(p.phone?[p.phone]:[]);
+    const k=cc(p)+phones.join(','),d=done[k];
+    const phoneHtml=phones.map(ph=>'<a href="tel:'+ph+'" dir="ltr">'+ph+'</a>').join(' · ');
+    let meta=esc(p.hood);
+    if(phoneHtml)meta+=(meta?' · ':'')+phoneHtml;
+    h+='<li class="'+(d?'done':'')+'"><span class="n">'+(i+1)+'</span><div class="c"><div class="t">'+esc(p.title)+'</div>'
+     +(p.person?'<div class="m">'+esc(p.person)+'</div>':'')
+     +(meta?'<div class="m">'+meta+'</div>':'')
+     +p.notes.map(n=>'<span class="tag">'+esc(n)+'</span>').join('')
+     +'<div class="act"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+cc(p)+'">الموقع</a>'
+     +'<label><input type="checkbox" data-k="'+esc(k)+'"'+(d?' checked':'')+'> تمت الزيارة</label></div></div></li>';
+  });
+  out.innerHTML=h+'</ol>';
+}
+function copyText(){
+  const t=cur.map((p,i)=>{
+    const phones=(p.phones&&p.phones.length?p.phones:(p.phone?[p.phone]:[])).join(' / ');
+    return (i+1)+'. '+p.title+(p.person?' - '+p.person:'')+(phones?'\n'+phones:'')+(p.hood?'\n'+p.hood:'')+(p.notes.length?'\n('+p.notes.join(' / ')+')':'');
+  }).join('\n\n');
+  const fb=()=>{const x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();try{document.execCommand('copy')}catch(e){}x.remove()};
+  try{navigator.clipboard.writeText(t).catch(fb)}catch(e){fb()}
+  const b=$('#cp');if(b){b.textContent='تم النسخ';setTimeout(()=>{if($('#cp'))$('#cp').textContent='نسخ القائمة'},1500)}
+}
+out.addEventListener('click',e=>{if(e.target.id==='cp')copyText()});
+out.addEventListener('change',e=>{
+  const k=e.target.dataset&&e.target.dataset.k;if(!k)return;
+  if(e.target.checked)done[k]=1;else delete done[k];
+  LS.set('done',JSON.stringify(done));e.target.closest('li').classList.toggle('done',e.target.checked);
+});
+ta.addEventListener('input',render);
+$('#mode').addEventListener('change',render);
+$('#skip').addEventListener('change',render);
+$('#clr').addEventListener('click',()=>{ta.value='';done={};LS.set('done','{}');render();ta.focus()});
+ta.value=LS.get('txt')||'';render();
+</script>
+</body>
+</html>
